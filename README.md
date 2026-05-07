@@ -132,4 +132,8 @@ Email:
 ---
 
 # INPUT:
-(Insert candidate applications here)
+"name": "Astalakshmi",
+"background": "Electronics and Communication Engineering",
+"experience": "Learning Java, Spring Boot, React",
+"motivation": "I want to become a fullstack developer",
+"skills": "Java, Spring Boot, React, MySQL"

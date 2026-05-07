@@ -1,8 +1,10 @@
 package se.lexicon.candidateresponse.service;
 
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.stereotype.Service;
 import se.lexicon.candidateresponse.dto.CandidateApplication;
 import se.lexicon.candidateresponse.dto.CandidateReviewResponse;
@@ -10,102 +12,100 @@ import se.lexicon.candidateresponse.dto.CandidateReviewResponse;
 @Service
 public class OpenAIServiceImpl implements OpenAIService {
 
-    private final ChatClient chatClient;
+    private final OpenAiChatModel openAiChatModel;
 
-    public OpenAIServiceImpl(ChatClient.Builder builder) {
-        this.chatClient = builder.build();
+    public OpenAIServiceImpl(OpenAiChatModel openAiChatModel) {
+        this.openAiChatModel = openAiChatModel;
     }
 
     @Override
     public String processSimpleChatQuery(String query) {
-        return chatClient.prompt()
-                .user(query)
-                .call()
-                .content();
+        return openAiChatModel.call(query);
     }
 
     @Override
     public String reviewCandidate(CandidateApplication candidateApplication) {
 
-        if (candidateApplication == null) {
-            throw new IllegalArgumentException("Candidate application is null");
-        }
+        SystemMessage systemMessage = new SystemMessage("""
+                You are an experienced HR recruiter evaluating candidates
+                for a Fullstack development course.
 
-        return chatClient.prompt()
-                .system("""
-                        You are an experienced HR recruiter evaluating candidates
-                        for a Fullstack development course.
+                Decide if the candidate is Accepted or Rejected.
+                Give short reasoning and generate a professional email.
+                """);
 
-                        Review carefully and decide Accepted or Rejected.
-                        Give short reasoning and generate a professional email.
-                        """)
-                .user(String.format("""
-                                Candidate Name: %s
-                                Background: %s
-                                Experience: %s
-                                Motivation: %s
-                                Skills: %s
+        UserMessage userMessage = new UserMessage(String.format("""
+                Candidate Name: %s
+                Background: %s
+                Experience: %s
+                Motivation: %s
+                Skills: %s
 
-                                Output format:
-                                Name:
-                                Decision:
-                                Reasoning:
-                                Email:
-                                """,
-                        candidateApplication.name(),
-                        candidateApplication.background(),
-                        candidateApplication.experience(),
-                        candidateApplication.motivation(),
-                        candidateApplication.skills()
-                ))
+                Output format:
+                Name:
+                Decision:
+                Reasoning:
+                Email:
+                """,
+                candidateApplication.name(),
+                candidateApplication.background(),
+                candidateApplication.experience(),
+                candidateApplication.motivation(),
+                candidateApplication.skills()
+        ));
 
-                .call()
-                .content();
+        Prompt prompt = new Prompt(systemMessage, userMessage);
+
+        return openAiChatModel.call(prompt)
+                .getResult()
+                .getOutput()
+                .getText();
     }
 
     @Override
     public CandidateReviewResponse reviewCandidateJson(CandidateApplication candidateApplication) {
-
-        if (candidateApplication == null) {
-            throw new IllegalArgumentException("Candidate application is null");
-        }
 
         BeanOutputConverter<CandidateReviewResponse> converter =
                 new BeanOutputConverter<>(CandidateReviewResponse.class);
 
         String format = converter.getFormat();
 
-        String content = chatClient.prompt()
-                .system("""
-                        You are an experienced HR recruiter evaluating candidates
-                        for a Fullstack development course.
+        SystemMessage systemMessage = new SystemMessage("""
+                You are an experienced HR recruiter evaluating candidates
+                for a Fullstack development course.
 
-                        Decide Accepted or Rejected.
-                        Include short reasoning and professional email.
+                Decide if the candidate is Accepted or Rejected.
+                Give short reasoning and generate a professional email.
 
-                        Return only JSON using this format:
-                        %s
-                        """.formatted(format))
-                .user(String.format("""
-                        Candidate Name: %s
-                        Background: %s
-                        Experience: %s
-                        Motivation: %s
-                        Skills: %s
-                        """,
-                        candidateApplication.name(),
-                        candidateApplication.background(),
-                        candidateApplication.experience(),
-                        candidateApplication.motivation(),
-                        candidateApplication.skills()
-                ))
-                .call()
-                .content();
+                Return only JSON using this format:
+                %s
+                """.formatted(format));
 
-        if (content == null) {
+        UserMessage userMessage = new UserMessage(String.format("""
+                Candidate Name: %s
+                Background: %s
+                Experience: %s
+                Motivation: %s
+                Skills: %s
+                """,
+                candidateApplication.name(),
+                candidateApplication.background(),
+                candidateApplication.experience(),
+                candidateApplication.motivation(),
+                candidateApplication.skills()
+        ));
+
+        Prompt prompt = new Prompt(systemMessage, userMessage);
+
+        String response = openAiChatModel.call(prompt)
+                .getResult()
+                .getOutput()
+                .getText();
+
+        if (response == null) {
             throw new IllegalStateException("OpenAI response was empty");
         }
 
-        return converter.convert(content);
+        return converter.convert(response);
     }
 }
